@@ -112,7 +112,6 @@ mvn \
     --gcpTempLocation=gs://${GCS_BUCKET}/temp \
     --region=${REGION} \
     --bigQueryDataset=${BIG_QUERY_DATASET} \
-    --bigQueryTableName=${BIG_QUERY_TABLE_NAME} \
     --runner=DataflowRunner \
     --numWorkers=1 \
     --maxNumWorkers=1 \

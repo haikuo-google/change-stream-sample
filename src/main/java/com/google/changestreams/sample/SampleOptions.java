@@ -18,6 +18,8 @@ package com.google.changestreams.sample;
 
 import org.apache.beam.runners.dataflow.options.DataflowPipelineOptions;
 
+import java.util.List;
+
 public interface SampleOptions extends DataflowPipelineOptions {
 
   String getInstance();
@@ -48,7 +50,8 @@ public interface SampleOptions extends DataflowPipelineOptions {
 
   void setBigQueryDataset(String bigQueryDataset);
 
-  String getBigQueryTableName();
+  // TODO: we probably can do this by reading change stream.
+  List<String> getSpannerTableNames();
 
-  void setBigQueryTableName(String bigQueryTableName);
+  void setSpannerTableNames(List<String> spannerTableNames);
 }
