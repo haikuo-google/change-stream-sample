@@ -20,4 +20,13 @@ public class SpannerColumn implements Serializable {
   public String name;
   public int ordinalPosition;
   SpannerType type;
+
+  @Override
+  public String toString() {
+    return "SpannerColumn{" +
+      "name='" + name + '\'' +
+      ", ordinalPosition=" + ordinalPosition +
+      ", type=" + type +
+      '}';
+  }
 }

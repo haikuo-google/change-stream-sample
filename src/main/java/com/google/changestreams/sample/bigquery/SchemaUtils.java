@@ -6,6 +6,7 @@ import com.google.cloud.bigquery.Field;
 import com.google.cloud.bigquery.Schema;
 import com.google.cloud.bigquery.StandardSQLTypeName;
 import com.google.cloud.spanner.*;
+import io.opencensus.trace.Span;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -117,7 +118,44 @@ public class SchemaUtils {
   }
 
   private static SpannerType infoSchemaTypeToCloudSpannerType(String infoSchemaType) {
+    infoSchemaType = removeSizeFromType(infoSchemaType);
+    switch (infoSchemaType) {
+      case "ARRAY<BOOL>":
+        return SpannerType.array(SpannerType.bool());
+      case "ARRAY<BYTES>":
+        return SpannerType.array(SpannerType.bytes());
+      case "ARRAY<DATE>":
+        return SpannerType.array(SpannerType.date());
+      case "ARRAY<FLOAT64>":
+        return SpannerType.array(SpannerType.float64());
+      case "ARRAY<INT64>":
+        return SpannerType.array(SpannerType.int64());
+      case "ARRAY<NUMERIC>":
+        return SpannerType.array(SpannerType.numeric());
+      case "ARRAY<STRING>":
+        return SpannerType.array(SpannerType.string());
+      case "ARRAY<TIMESTAMP>":
+        return SpannerType.array(SpannerType.timestamp());
+      case "BOOL": return SpannerType.bool();
+      case "BYTES": return SpannerType.bytes();
+      case "DATE": return SpannerType.date();
+      case "FLOAT64": return SpannerType.float64();
+      case "INT64": return SpannerType.int64();
+      // TODO
+      case "JSON": return SpannerType.int64();
+      case "NUMERIC": return SpannerType.numeric();
+      case "STRING": return SpannerType.string();
+      case "TIMESTAMP": return SpannerType.timestamp();
+    }
+
     return SpannerType.string();
+  }
+
+  private static String removeSizeFromType(String infoSchemaType) {
+    int leftParenthesisIdx = infoSchemaType.indexOf('(');
+    if (leftParenthesisIdx == -1) return infoSchemaType;
+    else return infoSchemaType.substring(0, leftParenthesisIdx) +
+      infoSchemaType.substring(infoSchemaType.indexOf(')') + 1);
   }
 
   public static Key toSpannerKey(
@@ -126,7 +164,7 @@ public class SchemaUtils {
       case BOOL:
         return Key.of(Boolean.parseBoolean(keyStr));
       case BYTES:
-        return Key.of(Byte.parseByte(keyStr));
+        return Key.of(keyStr);
       case DATE:
         return Key.of(keyStr);
       case FLOAT64:

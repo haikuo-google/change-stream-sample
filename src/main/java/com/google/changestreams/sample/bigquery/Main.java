@@ -9,8 +9,10 @@ import com.google.changestreams.sample.SampleOptions;
 import com.google.cloud.Timestamp;
 import java.io.File;
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.util.*;
 
+import com.google.cloud.bigquery.*;
 import com.google.cloud.spanner.*;
 import com.google.spanner.v1.KeySetOrBuilder;
 import io.opencensus.trace.Span;
@@ -35,6 +37,8 @@ import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.View;
 import org.apache.beam.sdk.values.PCollectionView;
 import org.json.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class Main {
   // Fields of BigQuery changelog table.
@@ -49,7 +53,7 @@ public class Main {
       .as(SampleOptions.class);
 
     // TODO
-    options.setSpannerTableNames(Arrays.asList("Singers"));
+    options.setSpannerTableNames(Arrays.asList("AllTypes"));
     options.setFilesToStage(deduplicateFilesToStage(options));
     options.setEnableStreamingEngine(true);
     options.setStreaming(true);
@@ -62,7 +66,6 @@ public class Main {
     String metadataInstanceId = options.getMetadataInstance();
     String metadataDatabaseId = options.getMetadataDatabase();
     String changeStreamName = options.getChangeStreamName();
-    String bigQueryDataset = options.getBigQueryDataset();
 
     final Timestamp now = Timestamp.now();
     final Timestamp after1Hour = Timestamp.ofTimeSecondsAndNanos(
@@ -90,26 +93,12 @@ public class Main {
                 for (String spannerTableName : spannerTableNames) {
                   SpannerSchema schema = SchemaUtils.GetSpannerSchema(
                     ops.getProject(), ops.getInstance(), ops.getDatabase(), spannerTableName);
+                  final Logger LOG = LoggerFactory.getLogger(this.getClass());
+                  LOG.info("Got schema in side input: " + schema);
                   output.put(spannerTableName, schema);
                 }
 
                 o.output(output);
-              }
-            }
-          ))
-        .apply(View.asSingleton());
-
-    PCollectionView<String> tmpSideInput =
-      pipeline.apply(Create.of(LINES))
-        .apply(
-          ParDo.of(
-            new DoFn<String, String>() {
-
-              @ProcessElement
-              public void process(
-                @Element String notUsed, OutputReceiver<String> o,
-                ProcessContext c) {
-                o.output("haikuo-test");
               }
             }
           ))
@@ -135,25 +124,236 @@ public class Main {
 
       // Converts DataChangeRecord to TableRow, each DataChangeRecord may contain
       // multiple SingerRow, since it has multiple Mod.
-      .apply(ParDo.of(new ChangeRecordToTableRowFn(schemasByTableName)).withSideInputs(schemasByTableName))
+      .apply(ParDo.of(new ChangeRecordToChangelogTableUsingBigQueryClientFn(schemasByTableName)).withSideInputs(schemasByTableName));
 
-      // Writes SingerRow into BigQuery changelog table.
-      .apply("Write to BigQuery changelog table",
-        BigQueryIO
-          .writeTableRows()
-          // Use streaming insert, note streaming insert also provides instance data availability
-          // for query (not for DML).
-          .withMethod(Write.Method.STREAMING_INSERTS)
-          .withCreateDisposition(CreateDisposition.CREATE_IF_NEEDED)
-          .withWriteDisposition(Write.WriteDisposition.WRITE_APPEND)
-          .withAutoSharding()
-          .optimizedWrites()
-          .to(
-            new ChangelogTableDynamicDestinations(
-              projectId, instanceId, databaseId, bigQueryDataset, schemasByTableName, tmpSideInput))
-      );
+    // TODO: BigQuery IO doesn't work due to dynamic destination
+
+//      // Writes SingerRow into BigQuery changelog table.
+//      .apply("Write to BigQuery changelog table",
+//        BigQueryIO
+//          .writeTableRows()
+//          // Use streaming insert, note streaming insert also provides instance data availability
+//          // for query (not for DML).
+//          .withMethod(Write.Method.STREAMING_INSERTS)
+//          .withCreateDisposition(CreateDisposition.CREATE_IF_NEEDED)
+//          .withWriteDisposition(Write.WriteDisposition.WRITE_APPEND)
+//          .withAutoSharding()
+//          .optimizedWrites()
+//          .to(
+//            new ChangelogTableDynamicDestinations(
+//              projectId, instanceId, databaseId, bigQueryDataset, schemasByTableName, tmpSideInput))
+//      );
 
     pipeline.run().waitUntilFinish();
+  }
+
+  // TODO: This is a temp solution since dynamic destination doesn't work.
+  static class ChangeRecordToChangelogTableUsingBigQueryClientFn extends DoFn<DataChangeRecord, String> {
+    private static final Logger LOG = LoggerFactory.getLogger(ChangeRecordToChangelogTableUsingBigQueryClientFn.class);
+    PCollectionView<Map<String, SpannerSchema>> schemasByTableName;
+    public ChangeRecordToChangelogTableUsingBigQueryClientFn(
+      PCollectionView<Map<String, SpannerSchema>> schemasByTableName) {
+      this.schemasByTableName = schemasByTableName;
+    }
+
+    @ProcessElement public void process(@Element DataChangeRecord element,
+                                        OutputReceiver<String> out,
+                                        ProcessContext c) {
+      SampleOptions ops = c.getPipelineOptions().as(SampleOptions.class);
+      Map<String, SpannerSchema> schemasByTableName = c.sideInput(this.schemasByTableName);
+      Spanner spanner =
+        SpannerOptions.newBuilder()
+          .setProjectId(ops.getProject())
+          .build()
+          .getService();
+      DatabaseClient dbClient = spanner
+        .getDatabaseClient(DatabaseId.of(ops.getProject(), ops.getInstance(), ops.getDatabase()));
+
+      String bigQueryChangelogTableName =
+        ChangelogTableDynamicDestinations.getBigQueryTableName(element.getTableName(), true) + "1";
+      List<Map<String, Object>> bigQueryRows = new LinkedList<>();
+      for (Mod mod : element.getMods()) {
+        bigQueryRows.add(modToBigQueryRow(mod, element.getModType(),
+          element.getCommitTimestamp(), schemasByTableName.get(element.getTableName()), dbClient));
+      }
+
+      createTableIfNeeded(ops.getBigQueryDataset(), bigQueryChangelogTableName,
+        schemasByTableName.get(element.getTableName()));
+
+      writeToChangelogTableUsingBigQueryClient(
+        ops.getBigQueryDataset(), bigQueryChangelogTableName, bigQueryRows);
+
+      spanner.close();
+    }
+
+    private StandardSQLTypeName spannerToBigQueryType(SpannerType spannerType) {
+      switch (spannerType.getCode()) {
+        case ARRAY:
+          return StandardSQLTypeName.ARRAY;
+        case BOOL:
+          return StandardSQLTypeName.BOOL;
+        case BYTES:
+          return StandardSQLTypeName.BYTES;
+        case DATE:
+          return StandardSQLTypeName.DATE;
+        case FLOAT64:
+          return StandardSQLTypeName.FLOAT64;
+        case INT64:
+          return StandardSQLTypeName.INT64;
+        case NUMERIC:
+          return StandardSQLTypeName.NUMERIC;
+        case STRING:
+          return StandardSQLTypeName.STRING;
+        case TIMESTAMP:
+          return StandardSQLTypeName.TIMESTAMP;
+        default:
+          throw new IllegalArgumentException(
+            String.format("Unsupported Spanner type: %s", spannerType.getCode()));
+      }
+    }
+
+    private void createTableIfNeeded(String bigQueryDataset, String bigQueryChangelogTableName,
+                                     SpannerSchema spannerSchema) {
+      List<SpannerColumn> cols = new LinkedList<>(spannerSchema.pkColumns);
+      cols.addAll(spannerSchema.columns);
+      List<Field> fields = new LinkedList<>();
+      for (SpannerColumn col : cols) {
+        LOG.info("ColName: " + col.name + ", ColType: " + col.type);
+//        Field.newBuilder("abc", StandardSQLTypeName.ARRAY);
+//        LOG.info("Created array field: ");
+        fields.add(Field.of(col.name, spannerToBigQueryType(col.type)));
+      }
+
+      fields.add(Field.of(ChangelogTableDynamicDestinations.BQ_CHANGELOG_SCHEMA_NAME_MOD_TYPE, StandardSQLTypeName.STRING));
+      fields.add(Field.of(ChangelogTableDynamicDestinations.BQ_CHANGELOG_SCHEMA_NAME_SPANNER_COMMIT_TIMESTAMP, StandardSQLTypeName.TIMESTAMP));
+      fields.add(Field.of(ChangelogTableDynamicDestinations.BQ_CHANGELOG_SCHEMA_NAME_BQ_COMMIT_TIMESTAMP, StandardSQLTypeName.TIMESTAMP));
+
+      Schema schema = Schema.of(fields);
+
+      BigQuery bigquery = BigQueryOptions.getDefaultInstance().getService();
+
+      TableId tableId = TableId.of(bigQueryDataset, bigQueryChangelogTableName);
+      TableDefinition tableDefinition = StandardTableDefinition.of(schema);
+      TableInfo tableInfo = TableInfo.newBuilder(tableId, tableDefinition).build();
+
+      try {
+        bigquery.create(tableInfo);
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
+
+      LOG.info("Table created successfully");
+    }
+
+    private void writeToChangelogTableUsingBigQueryClient(
+      String bigQueryDataset, String bigQueryChangelogTableName, List<Map<String, Object>> bigQueryRows) {
+      LOG.info("Starting to write to changelog table");
+      // Initialize client that will be used to send requests. This client only needs to be created
+      // once, and can be reused for multiple requests.
+      BigQuery bigquery = BigQueryOptions.getDefaultInstance().getService();
+
+      // Get table
+      TableId tableId = TableId.of(bigQueryDataset, bigQueryChangelogTableName);
+
+      InsertAllRequest.Builder requestBuilder = InsertAllRequest.newBuilder(tableId);
+      for (Map<String, Object> row : bigQueryRows) {
+        requestBuilder.addRow(InsertAllRequest.RowToInsert.of(row));
+      }
+
+      // Inserts rowContent into datasetName:tableId.
+      try {
+        LOG.info("Insert request: " + requestBuilder.build());
+        InsertAllResponse response = bigquery.insertAll(requestBuilder.build());
+        LOG.info("Response from streaming insertAll: " + response);
+        // TODO: Handle response.
+      } catch (Exception e) {
+        LOG.info("Got exception: " + e.getMessage());
+      }
+    }
+
+    private Map<String, Object> modToBigQueryRow(Mod mod, ModType modType,
+                                   com.google.cloud.Timestamp spannerCommitTimestamp,
+                                   SpannerSchema spannerSchema,
+                                   DatabaseClient dbClient) {
+      LOG.info("Received change record: " + mod);
+      Map<String, Object> row = new HashMap<>();
+      row.put(ChangelogTableDynamicDestinations.BQ_CHANGELOG_SCHEMA_NAME_MOD_TYPE, modType);
+      row.put(ChangelogTableDynamicDestinations.BQ_CHANGELOG_SCHEMA_NAME_SPANNER_COMMIT_TIMESTAMP,
+        spannerCommitTimestamp.getSeconds());
+      row.put(ChangelogTableDynamicDestinations.BQ_CHANGELOG_SCHEMA_NAME_BQ_COMMIT_TIMESTAMP, "AUTO");
+      JSONObject json = new JSONObject(mod.getKeysJson());
+      // TODO: validate the types match the schema
+      KeySet.Builder keySetBuilder = KeySet.newBuilder();
+      for (SpannerColumn spannerColumn : spannerSchema.pkColumns) {
+        String columnName = spannerColumn.name;
+        Object keyObj = json.get(spannerColumn.name);
+        LOG.info("Processing columnName: " + columnName + ", Value: " + keyObj);
+        row.put(columnName, keyObj);
+        keySetBuilder.addKey(SchemaUtils.toSpannerKey(spannerColumn.type.getCode(), keyObj.toString()));
+      }
+
+      ArrayList<String> columnNames = new ArrayList<>(spannerSchema.columns.size());
+      for (SpannerColumn column : spannerSchema.columns) {
+        columnNames.add(column.name);
+      }
+      try (ResultSet resultSet =
+             dbClient
+               .singleUse()
+               .read(
+                 spannerSchema.tableName,
+                 keySetBuilder.build(),
+                 columnNames)) {
+        // We will only receive one row.
+        while (resultSet.next()) {
+          for (SpannerColumn column : spannerSchema.columns) {
+            String name = column.name;
+            switch (column.type.getCode()) {
+              case BOOL:
+                row.put(name, resultSet.getBoolean(name));
+              case BYTES:
+                row.put(name, resultSet.getBytes(name));
+              case DATE:
+                row.put(name, resultSet.getDate(name));
+              case FLOAT64:
+                row.put(name, resultSet.getDouble(name));
+              case INT64:
+                row.put(name, resultSet.getLong(name));
+              case NUMERIC:
+                row.put(name, resultSet.getBigDecimal(name));
+              case STRING:
+                row.put(name, resultSet.getString(name));
+              case TIMESTAMP:
+                row.put(name, resultSet.getTimestamp(name));
+              case ARRAY:
+                if (column.type == SpannerType.array(SpannerType.bool())) {
+                  row.put(name, resultSet.getBooleanArray(name));
+                } else if (column.type == SpannerType.array(SpannerType.bytes())) {
+                  row.put(name, resultSet.getBytesList(name));
+                } else if (column.type == SpannerType.array(SpannerType.date())) {
+                  row.put(name, resultSet.getDateList(name));
+                } else if (column.type == SpannerType.array(SpannerType.float64())) {
+                  row.put(name, resultSet.getDoubleList(name));
+                } else if (column.type == SpannerType.array(SpannerType.int64())) {
+                  row.put(name, resultSet.getLongList(name));
+                } else if (column.type == SpannerType.array(SpannerType.numeric())) {
+                  row.put(name, resultSet.getBigDecimalList(name));
+                } else if (column.type == SpannerType.array(SpannerType.string())) {
+                  row.put(name, resultSet.getStringList(name));
+                } else if (column.type == SpannerType.array(SpannerType.timestamp())) {
+                  row.put(name, resultSet.getTimestampList(name));
+                }
+              default:
+                throw new IllegalArgumentException(
+                  String.format("Unsupported Spanner type: %s", column.type.getCode()));
+            }
+          }
+        }
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
+
+      return row;
+    }
   }
 
   static class ChangeRecordToTableRowFn extends DoFn<DataChangeRecord, TableRow> {
