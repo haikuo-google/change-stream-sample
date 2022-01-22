@@ -1,17 +1,34 @@
 package com.google.changestreams.sample.bigquery;
 
 import com.google.api.services.bigquery.model.TableFieldSchema;
+import com.google.cloud.ByteArray;
+import com.google.cloud.Date;
 import com.google.cloud.Timestamp;
 import com.google.cloud.bigquery.Field;
 import com.google.cloud.bigquery.Schema;
 import com.google.cloud.bigquery.StandardSQLTypeName;
 import com.google.cloud.spanner.*;
 import io.opencensus.trace.Span;
+import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.util.*;
 
 public class SchemaUtils {
+
+  public static Map<String, SpannerSchema> spannerSchemasByTableName(String projectId, String
+    instanceId, String databaseId, List<String> spannerTableNames) {
+    Map<String, SpannerSchema> res = new HashMap<>();
+    for (String spannerTableName : spannerTableNames) {
+      SpannerSchema schema = SchemaUtils.getSpannerSchema(
+        projectId, instanceId, databaseId, spannerTableName);
+      res.put(spannerTableName, schema);
+    }
+
+    return res;
+  }
 
   public static List<TableFieldSchema> spannerColumnsToBigQueryIOFields(
     List<SpannerColumn> spannerColumns) {
@@ -23,44 +40,70 @@ public class SchemaUtils {
     return bigQueryIOFields;
   }
 
-  private static TableFieldSchema spannerColumnToBigQueryIOField(
+  public static TableFieldSchema spannerColumnToBigQueryIOField(
     SpannerColumn spannerColumn) {
-    SpannerType spannerType = spannerColumn.type;
-    StandardSQLTypeName bigQueryType;
-    switch (spannerType.getCode()) {
-      case ARRAY:
-        bigQueryType = StandardSQLTypeName.ARRAY;
-        break;
-      case BOOL:
-        bigQueryType = StandardSQLTypeName.BOOL;
-        break;
-      case BYTES:
-        bigQueryType = StandardSQLTypeName.BYTES;
-        break;
-      case DATE:
-        bigQueryType = StandardSQLTypeName.DATE;
-      case FLOAT64:
-        bigQueryType = StandardSQLTypeName.FLOAT64;
-      case INT64:
-        bigQueryType = StandardSQLTypeName.INT64;
-        // TODO: JSON
-      case NUMERIC:
-        bigQueryType = StandardSQLTypeName.NUMERIC;
-      case STRING:
-        bigQueryType = StandardSQLTypeName.STRING;
-      case TIMESTAMP:
-        bigQueryType = StandardSQLTypeName.TIMESTAMP;
-      default:
-        throw new IllegalArgumentException(
-          String.format("Unsupported Spanner type: %s", spannerType));
+    TableFieldSchema field = new TableFieldSchema().setName(spannerColumn.name);
+    field.setMode("REPEATED");
+    SpannerType type = spannerColumn.type;
+    if (type.equals(SpannerType.array(SpannerType.bool()))) {
+      field.setType("BOOL");
+    } else if (type.equals(SpannerType.array(SpannerType.bytes()))) {
+      field.setType("BYTES");
+    } else if (type.equals(SpannerType.array(SpannerType.date()))) {
+      field.setType("DATE");
+    } else if (type.equals(SpannerType.array(SpannerType.float64()))) {
+      field.setType("FLOAT64");
+    } else if (type.equals(SpannerType.array(SpannerType.int64()))) {
+      field.setType("INT64");
+    } else if (type.equals(SpannerType.array(SpannerType.numeric()))) {
+      field.setType("NUMERIC");
+    } else if (type.equals(SpannerType.array(SpannerType.string()))) {
+      field.setType("STRING");
+    } else if (type.equals(SpannerType.array(SpannerType.timestamp()))) {
+      field.setType("TIMESTAMP");
+    } else {
+      field.setMode("NULLABLE");
+      StandardSQLTypeName bigQueryType;
+      switch (type.getCode()) {
+        case BOOL:
+          bigQueryType = StandardSQLTypeName.BOOL;
+          break;
+        case BYTES:
+          bigQueryType = StandardSQLTypeName.BYTES;
+          break;
+        case DATE:
+          bigQueryType = StandardSQLTypeName.DATE;
+          break;
+        case FLOAT64:
+          bigQueryType = StandardSQLTypeName.FLOAT64;
+          break;
+        case INT64:
+          bigQueryType = StandardSQLTypeName.INT64;
+          break;
+          // TODO: JSON
+        case NUMERIC:
+          bigQueryType = StandardSQLTypeName.NUMERIC;
+          break;
+        case STRING:
+          bigQueryType = StandardSQLTypeName.STRING;
+          break;
+        case TIMESTAMP:
+          bigQueryType = StandardSQLTypeName.TIMESTAMP;
+          break;
+        default:
+          throw new IllegalArgumentException(
+            String.format("Unsupported Spanner type: %s", type));
+      }
+      field.setType(bigQueryType.name());
     }
 
-    return new TableFieldSchema().set(spannerColumn.name, bigQueryType.name());
+    return field;
   }
 
-  public static SpannerSchema GetSpannerSchema(String projectId, String instanceId, String databaseId, String tableName) {
+  public static SpannerSchema getSpannerSchema(String projectId, String instanceId, String databaseId, String tableName) {
     Spanner spanner =
       SpannerOptions.newBuilder()
+        .setHost("https://staging-wrenchworks.sandbox.googleapis.com").setProjectId("span-cloud-testing")
         .setProjectId(projectId)
         .build()
         .getService();
@@ -158,31 +201,98 @@ public class SchemaUtils {
       infoSchemaType.substring(infoSchemaType.indexOf(')') + 1);
   }
 
-  public static Key toSpannerKey(
-    SpannerType.Code code, String keyStr) {
+  public static void appendToSpannerKey(
+    SpannerColumn col, JSONObject json, com.google.cloud.spanner.Key.Builder keyBuilder) {
+    SpannerType.Code code = col.type.getCode();
+    String name = col.name;
     switch (code) {
       case BOOL:
-        return Key.of(Boolean.parseBoolean(keyStr));
+        keyBuilder.append(json.getBoolean(name));
+        break;
       case BYTES:
-        return Key.of(keyStr);
+        keyBuilder.append(json.getString(name));
+        break;
       case DATE:
-        return Key.of(keyStr);
+        keyBuilder.append(json.getString(name));
+        break;
       case FLOAT64:
-        // TODO: is this right?
-        return Key.of(Double.parseDouble(keyStr));
+        keyBuilder.append(json.getDouble(name));
+        break;
       case INT64:
-        return Key.of(Long.parseLong(keyStr));
+        keyBuilder.append(json.getLong(name));
+        break;
       case NUMERIC:
-        // TODO: is this right?
-        return Key.of(new BigDecimal(keyStr));
+        keyBuilder.append(json.getBigDecimal(name));
+        break;
       case STRING:
-        return Key.of(keyStr);
+        keyBuilder.append(json.getString(name));
+        break;
       case TIMESTAMP:
-        // TODO: is this right?
-        return Key.of(keyStr);
+        keyBuilder.append(json.getString(name));
+        break;
       default:
         throw new IllegalArgumentException(
           String.format("Unsupported Spanner type: %s", code));
     }
+  }
+
+  public static Object getValFromResultSet(
+    SpannerColumn column, ResultSet resultSet) {
+            String name = column.name;
+
+            if (column.type.equals(SpannerType.array(SpannerType.bool()))) {
+              return resultSet.getBooleanArray(name);
+            } else if (column.type.equals(SpannerType.array(SpannerType.bytes()))) {
+              List<ByteArray> bytesList = resultSet.getBytesList(name);
+              List<String> res = new LinkedList<>();
+              for (ByteArray bytes : bytesList) {
+                res.add(bytes.toBase64());
+              }
+              return res;
+            } else if (column.type.equals(SpannerType.array(SpannerType.date()))) {
+              List<String> res = new LinkedList<>();
+              for (Date d : resultSet.getDateList(name)) {
+                res.add(d.toString());
+              }
+              return res;
+            } else if (column.type.equals(SpannerType.array(SpannerType.float64()))) {
+              return resultSet.getDoubleList(name);
+            } else if (column.type.equals(SpannerType.array(SpannerType.int64()))) {
+              return resultSet.getLongList(name);
+            } else if (column.type.equals(SpannerType.array(SpannerType.numeric()))) {
+              return resultSet.getBigDecimalList(name);
+            } else if (column.type.equals(SpannerType.array(SpannerType.string()))) {
+              return resultSet.getStringList(name);
+            } else if (column.type.equals(SpannerType.array(SpannerType.timestamp()))) {
+              List<String> res = new LinkedList<>();
+              for (Timestamp t : resultSet.getTimestampList(name)) {
+                res.add(t.toString());
+              }
+              return res;
+            } else {
+
+              switch (column.type.getCode()) {
+                case BOOL:
+                  return resultSet.getBoolean(name);
+                case BYTES:
+                  return resultSet.getBytes(name).toBase64();
+                case DATE:
+                  return resultSet.getDate(name).toString();
+                case FLOAT64:
+                  return resultSet.getDouble(name);
+                case INT64:
+                  return resultSet.getLong(name);
+                case NUMERIC:
+                  return resultSet.getBigDecimal(name);
+                case STRING:
+                  return resultSet.getString(name);
+                case TIMESTAMP:
+                  return resultSet.getTimestamp(name).toString();
+                case ARRAY:
+                default:
+                  throw new IllegalArgumentException(
+                    String.format("Unsupported Spanner type: %s", column.type.getCode()));
+              }
+            }
   }
 }

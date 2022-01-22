@@ -19,6 +19,8 @@ import com.google.api.services.bigquery.model.TableFieldSchema;
 import com.google.api.services.bigquery.model.TableReference;
 import com.google.api.services.bigquery.model.TableRow;
 import com.google.api.services.bigquery.model.TableSchema;
+import com.google.cloud.bigquery.Field;
+import com.google.cloud.bigquery.StandardSQLTypeName;
 import com.google.common.collect.ImmutableList;
 import org.apache.beam.sdk.io.gcp.bigquery.BigQueryUtils;
 import org.apache.beam.sdk.io.gcp.bigquery.DynamicDestinations;
@@ -30,10 +32,7 @@ import org.apache.beam.sdk.values.ValueInSingleWindow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import static com.google.changestreams.sample.bigquery.SchemaUtils.spannerColumnsToBigQueryIOFields;
 
@@ -47,8 +46,10 @@ import static com.google.changestreams.sample.bigquery.SchemaUtils.spannerColumn
 class ChangelogTableDynamicDestinations extends DynamicDestinations<TableRow, String> {
 
   public static final String BQ_CHANGELOG_SCHEMA_NAME_MOD_TYPE = "modType";
+  public static final String BQ_CHANGELOG_SCHEMA_NAME_TABLE_NAME = "tableName";
   public static final String BQ_CHANGELOG_SCHEMA_NAME_SPANNER_COMMIT_TIMESTAMP = "spannerCommitTimestamp";
   public static final String BQ_CHANGELOG_SCHEMA_NAME_BQ_COMMIT_TIMESTAMP = "bqCommitTimestamp";
+  public static final String BQ_CHANGELOG_SCHEMA_NAME_BQ_DATAFLOW_EMIT_TIMESTAMP = "dataflowEmitTimestamp";
 
   private static final Logger LOG =
       LoggerFactory.getLogger(ChangelogTableDynamicDestinations.class);
@@ -57,22 +58,19 @@ class ChangelogTableDynamicDestinations extends DynamicDestinations<TableRow, St
   final String projectId;
   final String spannerDatabase;
   final String spannerInstance;
-  final PCollectionView<Map<String, SpannerSchema>> spannerSchemasByTableName;
-  PCollectionView<String> tmpSideInput;
+  Map<String, SpannerSchema> spannerSchemasByTableName = new HashMap<>();
 
   ChangelogTableDynamicDestinations(
     String projectId,
     String spannerInstance,
     String spannerDatabase,
     String bigQueryDataset,
-    PCollectionView<Map<String, SpannerSchema>> spannerSchemasByTableName,
-    PCollectionView<String> tmpSideInput) {
+    List<String> spannerTableNames) {
+    LOG.info("ChangelogTableDynamicDestinations is initialized");
     this.projectId = projectId;
     this.bigQueryDataset = bigQueryDataset;
     this.spannerInstance = spannerInstance;
     this.spannerDatabase = spannerDatabase;
-    this.spannerSchemasByTableName = spannerSchemasByTableName;
-    this.tmpSideInput = tmpSideInput;
   }
 
   /**
@@ -85,9 +83,8 @@ class ChangelogTableDynamicDestinations extends DynamicDestinations<TableRow, St
    * @return
    */
   public static String getBigQueryTableName(String spannerTableName, boolean isChangelogTable) {
-    LOG.info("haikuo-test: getBigQueryTableName is called");
     if (isChangelogTable) {
-      return String.format("%s_changelog", spannerTableName);
+      return String.format("%s_changelog_1", spannerTableName);
     } else {
       return String.format("%s_replica", spannerTableName);
     }
@@ -96,7 +93,6 @@ class ChangelogTableDynamicDestinations extends DynamicDestinations<TableRow, St
   @Override
   // TODO: how is this used?
   public String getDestination(ValueInSingleWindow<TableRow> rowInfo) {
-    LOG.info("haikuo-test: getDestination is called");
     Object o = rowInfo.getValue().get("tableName");
     assert o instanceof String;
 
@@ -108,7 +104,6 @@ class ChangelogTableDynamicDestinations extends DynamicDestinations<TableRow, St
 
   @Override
   public TableDestination getTable(String targetTable) {
-    LOG.info("haikuo-test: getTable is called");
     String changelogTableName = getBigQueryTableName(targetTable, true);
 
     TableReference tableRef =
@@ -123,49 +118,29 @@ class ChangelogTableDynamicDestinations extends DynamicDestinations<TableRow, St
 
   @Override
   public TableSchema getSchema(String targetTable) {
-    LOG.info("haikuo-test: getSchema is called");
-//    Map<String, SpannerSchema> spannerSchemasByTableNameSideInput = this.sideInput(spannerSchemasByTableName);
-//    SpannerSchema spannerSchema = spannerSchemasByTableNameSideInput.get(targetTable);
+    String spannerTable = targetTable;
+    if (!spannerSchemasByTableName.containsKey(spannerTable)) {
+      LOG.info("Trying to get schema for " + targetTable);
+      spannerSchemasByTableName.put(spannerTable, SchemaUtils.getSpannerSchema(
+        projectId, spannerInstance, spannerDatabase, spannerTable));
+    }
+    // Assuming targetTable is the bigquery changelog table.
 
-    String tmp = this.sideInput(tmpSideInput);
+    SpannerSchema spannerSchema = spannerSchemasByTableName.get(spannerTable);
 
-//    TableFieldSchema pkSchema =
-//      new TableFieldSchema()
-//        .setName("primaryKey")
-//        .setType("RECORD")
-//        .setFields(spannerColumnsToBigQueryIOFields(spannerSchema.pkColumns));
-//
-//    TableFieldSchema schema =
-//        new TableFieldSchema()
-//            .setName("fullRecord")
-//            .setType("RECORD")
-//            .setMode("NULLABLE") // This field is null for deletions
-//            .setFields(spannerColumnsToBigQueryIOFields(spannerSchema.pkColumns));
-//
-//    TableSchema changelogTableSchema =
-//        new TableSchema()
-//            .setFields(
-//                Arrays.asList(
-//                  pkSchema,
-//                    schema,
-//                    new TableFieldSchema().setName(BQ_CHANGELOG_SCHEMA_NAME_MOD_TYPE).setType("STRING"),
-//                    new TableFieldSchema().setName(BQ_CHANGELOG_SCHEMA_NAME_SPANNER_COMMIT_TIMESTAMP).setType("TIMESTAMP"),
-//                  new TableFieldSchema().setName(BQ_CHANGELOG_SCHEMA_NAME_BQ_COMMIT_TIMESTAMP).setType("TIMESTAMP")));
+    List<SpannerColumn> cols = new LinkedList<>(spannerSchema.pkColumns);
+    cols.addAll(spannerSchema.columns);
+    List<TableFieldSchema> fields = new LinkedList<>();
+    for (SpannerColumn col : cols) {
+      fields.add(SchemaUtils.spannerColumnToBigQueryIOField(col));
+    }
 
-        TableSchema changelogTableSchema =
-        new TableSchema()
-            .setFields(
-                Arrays.asList(
-                    new TableFieldSchema().setName(BQ_CHANGELOG_SCHEMA_NAME_MOD_TYPE).setType("STRING"),
-                    new TableFieldSchema().setName(BQ_CHANGELOG_SCHEMA_NAME_SPANNER_COMMIT_TIMESTAMP).setType("TIMESTAMP"),
-                  new TableFieldSchema().setName(BQ_CHANGELOG_SCHEMA_NAME_BQ_COMMIT_TIMESTAMP).setType("TIMESTAMP")));
-    return changelogTableSchema;
-  }
+    fields.add(new TableFieldSchema().setName(BQ_CHANGELOG_SCHEMA_NAME_TABLE_NAME).setType(StandardSQLTypeName.STRING.name()).setMode("REQUIRED"));
+    fields.add(new TableFieldSchema().setName(BQ_CHANGELOG_SCHEMA_NAME_MOD_TYPE).setType(StandardSQLTypeName.STRING.name()).setMode("REQUIRED"));
+    fields.add(new TableFieldSchema().setName(BQ_CHANGELOG_SCHEMA_NAME_SPANNER_COMMIT_TIMESTAMP).setType(StandardSQLTypeName.TIMESTAMP.name()).setMode("REQUIRED"));
+    fields.add(new TableFieldSchema().setName(BQ_CHANGELOG_SCHEMA_NAME_BQ_COMMIT_TIMESTAMP).setType(StandardSQLTypeName.TIMESTAMP.name()).setMode("REQUIRED"));
+    fields.add(new TableFieldSchema().setName(BQ_CHANGELOG_SCHEMA_NAME_BQ_DATAFLOW_EMIT_TIMESTAMP).setType(StandardSQLTypeName.TIMESTAMP.name()).setMode("NULLABLE"));
 
-  // TODO: why adding this cause dataflow internal error?
-//  @Override
-  public List<PCollectionView<?>> getSideInputs() {
-    LOG.info("haikuo-test: getSideInputs is called");
-    return ImmutableList.of(tmpSideInput);
+    return new TableSchema().setFields(fields);
   }
 }
