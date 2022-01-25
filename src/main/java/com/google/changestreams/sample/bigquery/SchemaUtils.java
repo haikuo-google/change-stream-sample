@@ -171,7 +171,7 @@ public class SchemaUtils {
   public static SpannerSchema getSpannerSchema(String projectId, String instanceId, String databaseId, String tableName) {
     Spanner spanner =
       SpannerOptions.newBuilder()
-        .setHost("https://staging-wrenchworks.sandbox.googleapis.com").setProjectId("span-cloud-testing")
+//        .setHost("https://staging-wrenchworks.sandbox.googleapis.com")
         .setProjectId(projectId)
         .build()
         .getService();

@@ -37,7 +37,7 @@ class MergeStatementIssuingFn extends DoFn<SpannerSchema, String> {
         element);
       issueBigQueryStatement(ops.getProject(), buildMergeStatement(element, ops.getProject(), ops.getBigQueryDataset()));
     } catch (Exception e) {
-      LOG.info("Failed to merge: {}", e.getMessage());
+      LOG.info("Failed to merge table {}: {}", element.tableName, e.getMessage());
     }
 
     // TODO: no need to output
@@ -62,11 +62,15 @@ class MergeStatementIssuingFn extends DoFn<SpannerSchema, String> {
   TableDefinition tableDefinition = StandardTableDefinition.of(schema);
   TableInfo tableInfo = TableInfo.newBuilder(tableId, tableDefinition).build();
 
-  try {
-    bigquery.create(tableInfo);
-  } catch (Exception e) {
-    LOG.info("Error creating bigquery replica table: " + e.getMessage());
-  }
+    try {
+      bigquery.create(tableInfo);
+    } catch (BigQueryException e) {
+      if (e.getMessage().startsWith("Already Exists")) {
+        LOG.info("Replica table {} already exists, no need to create", bigQueryReplicaTableName);
+      } else {
+        throw e;
+      }
+    }
 
   LOG.info("Table created successfully");
 }
@@ -165,15 +169,21 @@ class MergeStatementIssuingFn extends DoFn<SpannerSchema, String> {
 
   public String buildQueryGetLatestChangePerPrimaryKey(
     SpannerSchema spannerSchema, String project, String bigqueryDataset) {
-    StringBuilder sourceTableColsBuilder = new StringBuilder();
+    StringBuilder sourceTableAllColsBuilder = new StringBuilder();
     for (SpannerColumn col : spannerSchema.allColumns) {
-      sourceTableColsBuilder.append("source_table." + col.name + ", ");
+      sourceTableAllColsBuilder.append("source_table." + col.name + ", ");
     }
-    sourceTableColsBuilder.append("source_table.ModType");
+    sourceTableAllColsBuilder.append("source_table.ModType");
+
+    StringBuilder sourceTablePkColsBuilder = new StringBuilder();
+    for (SpannerColumn col : spannerSchema.pkColumns) {
+      sourceTablePkColsBuilder.append("source_table." + col.name + ", ");
+    }
+    sourceTablePkColsBuilder.append("source_table.ModType");
 
     final String FORMAT =
       "SELECT * FROM (" +
-        "SELECT %s " +
+        "SELECT %s, ROW_NUMBER() OVER (PARTITION BY %s ORDER BY %s DESC) as row_num " +
         "FROM (%s) AS ts_table " +
         "INNER JOIN `%s.%s.%s` AS source_table " +
         "ON %s AND source_table.spannerCommitTimestamp = ts_table.max_ts_ms)";
@@ -181,7 +191,7 @@ class MergeStatementIssuingFn extends DoFn<SpannerSchema, String> {
     String bigqueryChangelogTable = ChangelogTableDynamicDestinations
       .getBigQueryTableName(spannerSchema.tableName, true);
 
-    return String.format(FORMAT, sourceTableColsBuilder,
+    return String.format(FORMAT, sourceTableAllColsBuilder, sourceTablePkColsBuilder, "source_table.spannerCommitTimestamp",
       buildQueryGetMaximumTimestampPerPrimaryKey(spannerSchema, project, bigqueryDataset, bigqueryChangelogTable),
       project, bigqueryDataset, bigqueryChangelogTable,
       buildJoinCondition(spannerSchema.pkColumns, "source_table", "ts_table"));

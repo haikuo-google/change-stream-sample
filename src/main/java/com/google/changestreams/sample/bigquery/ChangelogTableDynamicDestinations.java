@@ -84,9 +84,9 @@ class ChangelogTableDynamicDestinations extends DynamicDestinations<TableRow, St
    */
   public static String getBigQueryTableName(String spannerTableName, boolean isChangelogTable) {
     if (isChangelogTable) {
-      return String.format("%s_changelog_6", spannerTableName);
+      return String.format("%s_changelog_17", spannerTableName);
     } else {
-      return String.format("%s_replica_6", spannerTableName);
+      return String.format("%s_replica_17", spannerTableName);
     }
   }
 
@@ -137,7 +137,7 @@ class ChangelogTableDynamicDestinations extends DynamicDestinations<TableRow, St
 
     fields.add(new TableFieldSchema().setName(BQ_CHANGELOG_SCHEMA_NAME_TABLE_NAME).setType(StandardSQLTypeName.STRING.name()).setMode("REQUIRED"));
     fields.add(new TableFieldSchema().setName(BQ_CHANGELOG_SCHEMA_NAME_MOD_TYPE).setType(StandardSQLTypeName.STRING.name()).setMode("REQUIRED"));
-    fields.add(new TableFieldSchema().setName(BQ_CHANGELOG_SCHEMA_NAME_SPANNER_COMMIT_TIMESTAMP).setType(StandardSQLTypeName.TIMESTAMP.name()).setMode("REQUIRED"));
+    fields.add(new TableFieldSchema().setName(BQ_CHANGELOG_SCHEMA_NAME_SPANNER_COMMIT_TIMESTAMP).setType(StandardSQLTypeName.STRING.name()).setMode("REQUIRED"));
     fields.add(new TableFieldSchema().setName(BQ_CHANGELOG_SCHEMA_NAME_BQ_COMMIT_TIMESTAMP).setType(StandardSQLTypeName.TIMESTAMP.name()).setMode("REQUIRED"));
     fields.add(new TableFieldSchema().setName(BQ_CHANGELOG_SCHEMA_NAME_BQ_DATAFLOW_EMIT_TIMESTAMP).setType(StandardSQLTypeName.TIMESTAMP.name()).setMode("NULLABLE"));
 
