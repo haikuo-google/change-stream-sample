@@ -14,10 +14,12 @@ public class SpannerSchema implements Serializable {
   public String tableName;
   public List<SpannerColumn> pkColumns;
   public List<SpannerColumn> columns;
+  public List<SpannerColumn> allColumns;
 
   public SpannerSchema() {
     pkColumns = new LinkedList<>();
     columns = new LinkedList<>();
+    allColumns = new LinkedList<>();
   }
 
   static class SortByOrdinalPosition implements Comparator<SpannerColumn> {
@@ -32,6 +34,9 @@ public class SpannerSchema implements Serializable {
     this.tableName = tableName;
     this.pkColumns = pkColumns;
     this.columns = columns;
+    this.allColumns = new LinkedList<>();
+    allColumns.addAll(pkColumns);
+    allColumns.addAll(columns);
   }
 
   @Override

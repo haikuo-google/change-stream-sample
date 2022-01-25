@@ -84,9 +84,9 @@ class ChangelogTableDynamicDestinations extends DynamicDestinations<TableRow, St
    */
   public static String getBigQueryTableName(String spannerTableName, boolean isChangelogTable) {
     if (isChangelogTable) {
-      return String.format("%s_changelog_1", spannerTableName);
+      return String.format("%s_changelog_6", spannerTableName);
     } else {
-      return String.format("%s_replica", spannerTableName);
+      return String.format("%s_replica_6", spannerTableName);
     }
   }
 

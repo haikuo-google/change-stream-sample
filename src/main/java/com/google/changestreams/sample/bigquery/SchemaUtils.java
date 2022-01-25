@@ -55,6 +55,8 @@ public class SchemaUtils {
       field.setType("FLOAT64");
     } else if (type.equals(SpannerType.array(SpannerType.int64()))) {
       field.setType("INT64");
+    } else if (type.equals(SpannerType.array(SpannerType.json()))) {
+      field.setType("STRING");
     } else if (type.equals(SpannerType.array(SpannerType.numeric()))) {
       field.setType("NUMERIC");
     } else if (type.equals(SpannerType.array(SpannerType.string()))) {
@@ -80,7 +82,9 @@ public class SchemaUtils {
         case INT64:
           bigQueryType = StandardSQLTypeName.INT64;
           break;
-          // TODO: JSON
+        case JSON:
+          bigQueryType = StandardSQLTypeName.STRING;
+          break;
         case NUMERIC:
           bigQueryType = StandardSQLTypeName.NUMERIC;
           break;
@@ -98,6 +102,70 @@ public class SchemaUtils {
     }
 
     return field;
+  }
+
+  public static Field spannerColumnToBigQueryField(
+    SpannerColumn spannerColumn) {
+    Field.Builder filedBuilder = Field.newBuilder(spannerColumn.name, StandardSQLTypeName.STRING);
+    filedBuilder.setMode(Field.Mode.REPEATED);
+    SpannerType type = spannerColumn.type;
+    if (type.equals(SpannerType.array(SpannerType.bool()))) {
+      filedBuilder.setType(StandardSQLTypeName.BOOL);
+    } else if (type.equals(SpannerType.array(SpannerType.bytes()))) {
+      filedBuilder.setType(StandardSQLTypeName.BYTES);
+    } else if (type.equals(SpannerType.array(SpannerType.date()))) {
+      filedBuilder.setType(StandardSQLTypeName.DATE);
+    } else if (type.equals(SpannerType.array(SpannerType.float64()))) {
+      filedBuilder.setType(StandardSQLTypeName.FLOAT64);
+    } else if (type.equals(SpannerType.array(SpannerType.int64()))) {
+      filedBuilder.setType(StandardSQLTypeName.INT64);
+    } else if (type.equals(SpannerType.array(SpannerType.json()))) {
+      filedBuilder.setType(StandardSQLTypeName.STRING);
+    } else if (type.equals(SpannerType.array(SpannerType.numeric()))) {
+      filedBuilder.setType(StandardSQLTypeName.NUMERIC);
+    } else if (type.equals(SpannerType.array(SpannerType.string()))) {
+      filedBuilder.setType(StandardSQLTypeName.STRING);
+    } else if (type.equals(SpannerType.array(SpannerType.timestamp()))) {
+      filedBuilder.setType(StandardSQLTypeName.TIMESTAMP);
+    } else {
+      filedBuilder.setMode(Field.Mode.NULLABLE);
+      StandardSQLTypeName bigQueryType;
+      switch (type.getCode()) {
+        case BOOL:
+          bigQueryType = StandardSQLTypeName.BOOL;
+          break;
+        case BYTES:
+          bigQueryType = StandardSQLTypeName.BYTES;
+          break;
+        case DATE:
+          bigQueryType = StandardSQLTypeName.DATE;
+          break;
+        case FLOAT64:
+          bigQueryType = StandardSQLTypeName.FLOAT64;
+          break;
+        case INT64:
+          bigQueryType = StandardSQLTypeName.INT64;
+          break;
+        case JSON:
+          bigQueryType = StandardSQLTypeName.STRING;
+          break;
+        case NUMERIC:
+          bigQueryType = StandardSQLTypeName.NUMERIC;
+          break;
+        case STRING:
+          bigQueryType = StandardSQLTypeName.STRING;
+          break;
+        case TIMESTAMP:
+          bigQueryType = StandardSQLTypeName.TIMESTAMP;
+          break;
+        default:
+          throw new IllegalArgumentException(
+            String.format("Unsupported Spanner type: %s", type));
+      }
+      filedBuilder.setType(bigQueryType);
+    }
+
+    return filedBuilder.build();
   }
 
   public static SpannerSchema getSpannerSchema(String projectId, String instanceId, String databaseId, String tableName) {
@@ -173,6 +241,8 @@ public class SchemaUtils {
         return SpannerType.array(SpannerType.float64());
       case "ARRAY<INT64>":
         return SpannerType.array(SpannerType.int64());
+      case "ARRAY<JSON>":
+        return SpannerType.array(SpannerType.json());
       case "ARRAY<NUMERIC>":
         return SpannerType.array(SpannerType.numeric());
       case "ARRAY<STRING>":
@@ -184,8 +254,7 @@ public class SchemaUtils {
       case "DATE": return SpannerType.date();
       case "FLOAT64": return SpannerType.float64();
       case "INT64": return SpannerType.int64();
-      // TODO
-      case "JSON": return SpannerType.int64();
+      case "JSON": return SpannerType.json();
       case "NUMERIC": return SpannerType.numeric();
       case "STRING": return SpannerType.string();
       case "TIMESTAMP": return SpannerType.timestamp();
@@ -282,6 +351,8 @@ public class SchemaUtils {
                   return resultSet.getDouble(name);
                 case INT64:
                   return resultSet.getLong(name);
+                case JSON:
+                  return resultSet.getJson(name);
                 case NUMERIC:
                   return resultSet.getBigDecimal(name);
                 case STRING:

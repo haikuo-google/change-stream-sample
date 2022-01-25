@@ -1,259 +1,249 @@
 package com.google.changestreams.sample.bigquery;
 
-//
-// Source code recreated from a .class file by IntelliJ IDEA
-// (powered by FernFlower decompiler)
-//
+import static com.google.common.base.Preconditions.checkArgument;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.spanner.v1.TypeCode;
-import com.google.spanner.v1.Type.Builder;
 import org.apache.beam.sdk.coders.AvroCoder;
 import org.apache.beam.sdk.coders.DefaultCoder;
 
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.Immutable;
+
+/**
+ * Describes a SpannerType in the Cloud Spanner SpannerType system. SpannerTypes can either be primitive (for example,
+ * {@code INT64} and {@code STRING}) or composite (for example, {@code ARRAY<INT64>} or {@code
+ * STRUCT<INT64,STRING>}).
+ *
+ * <p>{@code SpannerType} instances are immutable.
+ */
 
 @Immutable
 @DefaultCoder(AvroCoder.class)
 public final class SpannerType implements Serializable {
-  private static final SpannerType TYPE_BOOL;
-  private static final SpannerType TYPE_INT64;
-  private static final SpannerType TYPE_FLOAT64;
-  private static final SpannerType TYPE_NUMERIC;
-  private static final SpannerType TYPE_STRING;
-  private static final SpannerType TYPE_BYTES;
-  private static final SpannerType TYPE_TIMESTAMP;
-  private static final SpannerType TYPE_DATE;
-  private static final SpannerType TYPE_ARRAY_BOOL;
-  private static final SpannerType TYPE_ARRAY_INT64;
-  private static final SpannerType TYPE_ARRAY_FLOAT64;
-  private static final SpannerType TYPE_ARRAY_NUMERIC;
-  private static final SpannerType TYPE_ARRAY_STRING;
-  private static final SpannerType TYPE_ARRAY_BYTES;
-  private static final SpannerType TYPE_ARRAY_TIMESTAMP;
-  private static final SpannerType TYPE_ARRAY_DATE;
+  private static final SpannerType SpannerType_BOOL = new SpannerType(Code.BOOL, null);
+  private static final SpannerType SpannerType_INT64 = new SpannerType(Code.INT64, null);
+  private static final SpannerType SpannerType_FLOAT64 = new SpannerType(Code.FLOAT64, null);
+  private static final SpannerType SpannerType_NUMERIC = new SpannerType(Code.NUMERIC, null);
+  private static final SpannerType SpannerType_STRING = new SpannerType(Code.STRING, null);
+  private static final SpannerType SpannerType_JSON = new SpannerType(Code.JSON, null);
+  private static final SpannerType SpannerType_BYTES = new SpannerType(Code.BYTES, null);
+  private static final SpannerType SpannerType_TIMESTAMP = new SpannerType(Code.TIMESTAMP, null);
+  private static final SpannerType SpannerType_DATE = new SpannerType(Code.DATE, null);
+  private static final SpannerType SpannerType_ARRAY_BOOL = new SpannerType(Code.ARRAY, SpannerType_BOOL);
+  private static final SpannerType SpannerType_ARRAY_INT64 = new SpannerType(Code.ARRAY, SpannerType_INT64);
+  private static final SpannerType SpannerType_ARRAY_FLOAT64 = new SpannerType(Code.ARRAY, SpannerType_FLOAT64);
+  private static final SpannerType SpannerType_ARRAY_NUMERIC = new SpannerType(Code.ARRAY, SpannerType_NUMERIC);
+  private static final SpannerType SpannerType_ARRAY_STRING = new SpannerType(Code.ARRAY, SpannerType_STRING);
+  private static final SpannerType SpannerType_ARRAY_JSON = new SpannerType(Code.ARRAY, SpannerType_JSON);
+  private static final SpannerType SpannerType_ARRAY_BYTES = new SpannerType(Code.ARRAY, SpannerType_BYTES);
+  private static final SpannerType SpannerType_ARRAY_TIMESTAMP = new SpannerType(Code.ARRAY, SpannerType_TIMESTAMP);
+  private static final SpannerType SpannerType_ARRAY_DATE = new SpannerType(Code.ARRAY, SpannerType_DATE);
+
   private static final int AMBIGUOUS_FIELD = -1;
   private static final long serialVersionUID = -3076152125004114582L;
-  @org.apache.avro.reflect.Nullable
-  private final SpannerType.Code code;
-  @org.apache.avro.reflect.Nullable
-  private final SpannerType arrayElementType;
 
-  // TODO: Add default type.
-  public SpannerType() {
-    code = Code.BOOL;
-    arrayElementType = TYPE_BOOL;
-  }
-
+  /** Returns the descriptor for the {@code BOOL SpannerType}. */
   public static SpannerType bool() {
-    return TYPE_BOOL;
+    return SpannerType_BOOL;
   }
 
+  /**
+   * Returns the descriptor for the {@code INT64} SpannerType: an integral SpannerType with the same value domain
+   * as a Java {@code long}.
+   */
   public static SpannerType int64() {
-    return TYPE_INT64;
+    return SpannerType_INT64;
   }
 
+  /**
+   * Returns the descriptor for the {@code FLOAT64} SpannerType: a floating point SpannerType with the same value
+   * domain as a Java {code double}.
+   */
   public static SpannerType float64() {
-    return TYPE_FLOAT64;
+    return SpannerType_FLOAT64;
   }
 
+  /** Returns the descriptor for the {@code NUMERIC} SpannerType. */
   public static SpannerType numeric() {
-    return TYPE_NUMERIC;
+    return SpannerType_NUMERIC;
   }
 
+  /**
+   * Returns the descriptor for the {@code STRING} SpannerType: a variable-length Unicode character string.
+   */
   public static SpannerType string() {
-    return TYPE_STRING;
+    return SpannerType_STRING;
   }
 
+  /** Returns the descriptor for the {@code JSON} SpannerType. */
+  public static SpannerType json() {
+    return SpannerType_JSON;
+  }
+
+  /** Returns the descriptor for the {@code BYTES} SpannerType: a variable-length byte string. */
   public static SpannerType bytes() {
-    return TYPE_BYTES;
+    return SpannerType_BYTES;
   }
 
+  /**
+   * Returns the descriptor for the {@code TIMESTAMP} SpannerType: a nano precision timestamp in the range
+   * [0000-01-01 00:00:00, 9999-12-31 23:59:59.999999999 UTC].
+   */
   public static SpannerType timestamp() {
-    return TYPE_TIMESTAMP;
+    return SpannerType_TIMESTAMP;
   }
 
+  /**
+   * Returns the descriptor for the {@code DATE} SpannerType: a timezone independent date in the range
+   * [0001-01-01, 9999-12-31).
+   */
   public static SpannerType date() {
-    return TYPE_DATE;
+    return SpannerType_DATE;
   }
 
-  public static SpannerType array(SpannerType elementType) {
-    Preconditions.checkNotNull(elementType);
-    switch(elementType.getCode()) {
+  /** Returns a descriptor for an array of {@code elementSpannerType}. */
+  public static SpannerType array(SpannerType elementSpannerType) {
+    Preconditions.checkNotNull(elementSpannerType);
+    switch (elementSpannerType.getCode()) {
       case BOOL:
-        return TYPE_ARRAY_BOOL;
+        return SpannerType_ARRAY_BOOL;
       case INT64:
-        return TYPE_ARRAY_INT64;
+        return SpannerType_ARRAY_INT64;
       case FLOAT64:
-        return TYPE_ARRAY_FLOAT64;
+        return SpannerType_ARRAY_FLOAT64;
       case NUMERIC:
-        return TYPE_ARRAY_NUMERIC;
+        return SpannerType_ARRAY_NUMERIC;
       case STRING:
-        return TYPE_ARRAY_STRING;
+        return SpannerType_ARRAY_STRING;
+      case JSON:
+        return SpannerType_ARRAY_JSON;
       case BYTES:
-        return TYPE_ARRAY_BYTES;
+        return SpannerType_ARRAY_BYTES;
       case TIMESTAMP:
-        return TYPE_ARRAY_TIMESTAMP;
+        return SpannerType_ARRAY_TIMESTAMP;
       case DATE:
-        return TYPE_ARRAY_DATE;
+        return SpannerType_ARRAY_DATE;
       default:
-        return new SpannerType(SpannerType.Code.ARRAY, elementType);
+        return new SpannerType(Code.ARRAY, elementSpannerType);
     }
   }
 
-  private SpannerType(SpannerType.Code code, @Nullable SpannerType arrayElementType) {
+  @org.apache.avro.reflect.Nullable
+  private final Code code;
+  @org.apache.avro.reflect.Nullable
+  private final SpannerType arrayElementSpannerType;
+
+  // For serialization.
+  private SpannerType() {
+    // TODO: remove init.
+    code = Code.BOOL;
+    arrayElementSpannerType = SpannerType_BOOL;
+  }
+
+  private SpannerType(
+    Code code,
+    @Nullable SpannerType arrayElementSpannerType) {
     this.code = code;
-    this.arrayElementType = arrayElementType;
+    this.arrayElementSpannerType = arrayElementSpannerType;
   }
 
-  public SpannerType.Code getCode() {
-    return this.code;
-  }
-
-  public SpannerType getArrayElementType() {
-    Preconditions.checkState(this.code == SpannerType.Code.ARRAY, "Illegal call for non-ARRAY type");
-    return this.arrayElementType;
-  }
-
-  void toString(StringBuilder b) {
-    if (this.code == SpannerType.Code.ARRAY) {
-      b.append("ARRAY<");
-      this.arrayElementType.toString(b);
-      b.append('>');
-    } else {
-      b.append(this.code.toString());
-    }
-  }
-
-  public String toString() {
-    StringBuilder b = new StringBuilder();
-    this.toString(b);
-    return b.toString();
-  }
-
-  public boolean equals(Object o) {
-    if (this == o) {
-      return true;
-    } else if (o != null && this.getClass() == o.getClass()) {
-      SpannerType that = (SpannerType)o;
-      return this.code == that.code && Objects.equals(this.arrayElementType, that.arrayElementType);
-    } else {
-      return false;
-    }
-  }
-
-  public int hashCode() {
-    return Objects.hash(new Object[]{this.code, this.arrayElementType});
-  }
-
-  com.google.spanner.v1.Type toProto() {
-    Builder proto = com.google.spanner.v1.Type.newBuilder();
-    proto.setCode(this.code.protoCode());
-    if (this.code == SpannerType.Code.ARRAY) {
-      proto.setArrayElementType(this.arrayElementType.toProto());
-    }
-
-    return proto.build();
-  }
-
-  static SpannerType fromProto(com.google.spanner.v1.Type proto) {
-    SpannerType.Code type = SpannerType.Code.fromProtoCode(proto.getCode());
-    switch(type) {
-      case BOOL:
-        return bool();
-      case INT64:
-        return int64();
-      case FLOAT64:
-        return float64();
-      case NUMERIC:
-        return numeric();
-      case STRING:
-        return string();
-      case BYTES:
-        return bytes();
-      case TIMESTAMP:
-        return timestamp();
-      case DATE:
-        return date();
-      case ARRAY:
-        Preconditions.checkArgument(proto.hasArrayElementType(), "Missing expected 'array_element_type' field in 'Type' message: %s", proto);
-
-        SpannerType elementType;
-        try {
-          elementType = fromProto(proto.getArrayElementType());
-        } catch (IllegalArgumentException var7) {
-          throw new IllegalArgumentException("Could not parse 'array_element_type' attribute in 'Type' message: " + proto, var7);
-        }
-
-        return array(elementType);
-      default:
-        throw new AssertionError("Unimplemented case: " + type);
-    }
-  }
-
-  static {
-    TYPE_BOOL = new SpannerType(SpannerType.Code.BOOL, (SpannerType)null);
-    TYPE_INT64 = new SpannerType(SpannerType.Code.INT64, (SpannerType)null);
-    TYPE_FLOAT64 = new SpannerType(SpannerType.Code.FLOAT64, (SpannerType)null);
-    TYPE_NUMERIC = new SpannerType(SpannerType.Code.NUMERIC, (SpannerType)null);
-    TYPE_STRING = new SpannerType(SpannerType.Code.STRING, (SpannerType)null);
-    TYPE_BYTES = new SpannerType(SpannerType.Code.BYTES, (SpannerType)null);
-    TYPE_TIMESTAMP = new SpannerType(SpannerType.Code.TIMESTAMP, (SpannerType)null);
-    TYPE_DATE = new SpannerType(SpannerType.Code.DATE, (SpannerType)null);
-    TYPE_ARRAY_BOOL = new SpannerType(SpannerType.Code.ARRAY, TYPE_BOOL);
-    TYPE_ARRAY_INT64 = new SpannerType(SpannerType.Code.ARRAY, TYPE_INT64);
-    TYPE_ARRAY_FLOAT64 = new SpannerType(SpannerType.Code.ARRAY, TYPE_FLOAT64);
-    TYPE_ARRAY_NUMERIC = new SpannerType(SpannerType.Code.ARRAY, TYPE_NUMERIC);
-    TYPE_ARRAY_STRING = new SpannerType(SpannerType.Code.ARRAY, TYPE_STRING);
-    TYPE_ARRAY_BYTES = new SpannerType(SpannerType.Code.ARRAY, TYPE_BYTES);
-    TYPE_ARRAY_TIMESTAMP = new SpannerType(SpannerType.Code.ARRAY, TYPE_TIMESTAMP);
-    TYPE_ARRAY_DATE = new SpannerType(SpannerType.Code.ARRAY, TYPE_DATE);
-  }
-
-  public static enum Code {
+  public enum Code {
     BOOL(TypeCode.BOOL),
     INT64(TypeCode.INT64),
     NUMERIC(TypeCode.NUMERIC),
     FLOAT64(TypeCode.FLOAT64),
     STRING(TypeCode.STRING),
+    JSON(TypeCode.JSON),
     BYTES(TypeCode.BYTES),
     TIMESTAMP(TypeCode.TIMESTAMP),
     DATE(TypeCode.DATE),
-    ARRAY(TypeCode.ARRAY);
+    ARRAY(TypeCode.ARRAY),
+    STRUCT(TypeCode.STRUCT);
 
-    private static final Map<TypeCode, SpannerType.Code> protoToCode;
+    private static final Map<TypeCode, Code> protoToCode;
+
+    static {
+      ImmutableMap.Builder<TypeCode, Code> builder = ImmutableMap.builder();
+      for (Code code : Code.values()) {
+        builder.put(code.protoCode(), code);
+      }
+      protoToCode = builder.build();
+    }
+
     private final TypeCode protoCode;
 
-    private Code(TypeCode protoCode) {
+    Code(TypeCode protoCode) {
       this.protoCode = protoCode;
     }
 
     TypeCode protoCode() {
-      return this.protoCode;
+      return protoCode;
     }
 
-    static SpannerType.Code fromProtoCode(TypeCode protoCode) {
-      SpannerType.Code code = (SpannerType.Code)protoToCode.get(protoCode);
-      Preconditions.checkArgument(code != null, "Invalid code: %s", protoCode);
+    static Code fromProtoCode(TypeCode protoCode) {
+      Code code = protoToCode.get(protoCode);
+      checkArgument(code != null, "Invalid code: %s", protoCode);
       return code;
     }
+  }
 
-    static {
-      com.google.common.collect.ImmutableMap.Builder<TypeCode, SpannerType.Code> builder = ImmutableMap.builder();
-      SpannerType.Code[] var1 = values();
-      int var2 = var1.length;
+  /** Returns the SpannerType code corresponding to this SpannerType. */
+  public Code getCode() {
+    return code;
+  }
 
-      for(int var3 = 0; var3 < var2; ++var3) {
-        SpannerType.Code code = var1[var3];
-        builder.put(code.protoCode(), code);
-      }
+  /**
+   * Returns the SpannerType descriptor for elements of this {@code ARRAY} SpannerType.
+   *
+   * @throws IllegalStateException if {@code code() != Code.ARRAY}
+   */
+  public SpannerType getArrayElementSpannerType() {
+    Preconditions.checkState(code == Code.ARRAY, "Illegal call for non-ARRAY SpannerType");
+    return arrayElementSpannerType;
+  }
 
-      protoToCode = builder.build();
+  void toString(StringBuilder b) {
+    if (code == Code.ARRAY) {
+      b.append("ARRAY<");
+      arrayElementSpannerType.toString(b);
+      b.append('>');
+    } else {
+      b.append(code.toString());
     }
+  }
+
+  @Override
+  public String toString() {
+    StringBuilder b = new StringBuilder();
+    toString(b);
+    return b.toString();
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    SpannerType that = (SpannerType) o;
+    return code == that.code
+      && Objects.equals(arrayElementSpannerType, that.arrayElementSpannerType);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(code, arrayElementSpannerType);
   }
 }
