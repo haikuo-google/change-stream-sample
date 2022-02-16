@@ -11,6 +11,7 @@ import java.io.File;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 import com.google.cloud.bigquery.*;
 import com.google.cloud.spanner.*;
@@ -53,7 +54,6 @@ import org.joda.time.Instant;
 import org.json.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import sun.tools.jconsole.Tab;
 
 // TODO: we should consider creating all tables once.
 public class Main {
@@ -395,7 +395,7 @@ public class Main {
 
       try (ResultSet resultSet =
              dbClient
-               .singleUse()
+               .singleUse(TimestampBound.ofReadTimestamp(spannerCommitTimestamp))
                .read(
                  spannerSchema.tableName,
                  KeySet.singleKey(keyBuilder.build()),

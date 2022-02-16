@@ -1,4 +1,4 @@
-package com.google.changestreams.sample.bigquery;
+package com.google.changestreams.sample.bigquery.changelog.fullschema;
 
 import org.apache.beam.sdk.coders.AvroCoder;
 import org.apache.beam.sdk.coders.DefaultCoder;
@@ -7,8 +7,6 @@ import java.io.Serializable;
 
 @DefaultCoder(AvroCoder.class)
 public class SpannerColumn implements Serializable {
-  private static final long serialVersionUID = 8703257194338184211L;
-
   public SpannerColumn() {
     type = SpannerType.bool();
   }
